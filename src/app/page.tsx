@@ -124,7 +124,7 @@ export default function Home() {
           <a className="wordmark" href="#top" aria-label="Themis home"><span>Θ</span>THEMIS</a>
           <nav aria-label="Primary navigation">
             <a href="#protocol">Protocol</a><a href="#receipt">Receipts</a><a href="#stack">0G Stack</a>
-            <a href="https://docs.0g.ai" target="_blank" rel="noreferrer">Docs</a>
+            <a href="/docs">Docs</a>
           </nav>
           <button className="connect-button" onClick={connectWallet} type="button">
             <i className={wallet ? "online" : ""} />
@@ -207,7 +207,7 @@ export default function Home() {
         </div>
       </section>
 
-      <footer className="site-footer"><div><span>Θ</span><strong>THEMIS</strong></div><p>Autonomous work. Inspectable proof. Conditional value.</p><a href="#top">Back to signal ↑</a></footer>
+      <footer className="site-footer"><div><span>Θ</span><strong>THEMIS</strong></div><p>Autonomous work. Inspectable proof. Conditional value.</p><div className="footer-links"><a href="/docs">Read the docs</a><a href="#top">Back to signal ↑</a></div></footer>
 
       {demoOpen && (
         <div className="demo-shell" role="dialog" aria-modal="true" aria-labelledby="demo-title">

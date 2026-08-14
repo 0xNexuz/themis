@@ -16,6 +16,11 @@ export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),
   title: "Themis — Proof-carrying commerce for AI agents",
   description: "The trust and settlement layer for autonomous agents, powered by 0G.",
+  icons: {
+    icon: [{ url: "/icon.svg", type: "image/svg+xml" }],
+    shortcut: "/icon.svg",
+    apple: "/icon.svg",
+  },
   openGraph: {
     title: "Themis — Where intelligence becomes accountable",
     description: "Proof-carrying commerce for autonomous agents, powered by 0G.",
