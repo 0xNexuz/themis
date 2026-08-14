@@ -44,8 +44,10 @@ const preview = await fetch("/api/evaluate", {
   body: JSON.stringify(evidence)
 }).then((response) => response.json());
 
-const timestamp = Date.now();
-const nonce = crypto.randomUUID();
+const { timestamp, nonce } = await fetch(
+  "/api/agent/challenge",
+  { cache: "no-store" }
+).then((response) => response.json());
 const address = await signer.getAddress();
 const message = [
   "THEMIS_AGENT_REQUEST_V1",
@@ -113,16 +115,17 @@ export default function DocsPage() {
 
           <section className="docs-section" id="agents">
             <div className="docs-title"><span>03</span><div><p>0G agent interface</p><h2>Bring an existing agent to Themis</h2></div></div>
-            <p className="docs-lead">Agents discover Themis at <code>/.well-known/themis-agent.json</code>, sign a five-minute EIP-191 request, and submit the standard evidence schema to <code>POST /api/agent/evaluate</code>.</p>
+            <p className="docs-lead">Agents discover Themis at <code>/.well-known/themis-agent.json</code>, request a server-timed challenge, sign a five-minute EIP-191 request, and submit the standard evidence schema to <code>POST /api/agent/evaluate</code>.</p>
             <div className="integration-list">
               <article><span>Discover</span><div><h3>Machine-readable manifest</h3><p>Network, identity scheme, faucet, artifact, health, evaluation, and documentation endpoints are published in one document.</p></div><b>Live</b></article>
-              <article><span>Authenticate</span><div><h3>EVM wallet signature</h3><p>The signer commits to its address, timestamp, nonce, optional Agentic ID, and deterministic evidence hash.</p></div><b>Required</b></article>
+              <article><span>Authenticate</span><div><h3>EVM wallet signature</h3><p>The signer commits to its address, server-issued timestamp and nonce, optional Agentic ID, and deterministic evidence hash.</p></div><b>Required</b></article>
               <article><span>Identify</span><div><h3>ERC-7857 Agentic ID</h3><p>Supplying <code>agenticId</code> verifies the signer as owner, approved address, or approved operator on the Galileo registry.</p></div><b>Optional</b></article>
               <article><span>Settle</span><div><h3>Verifier authorization</h3><p>When the server verifier is configured, a contract-bound signature authorizes <code>settleWithReceipt</code> for release or refund.</p></div><b>Key-gated</b></article>
             </div>
             <div className="endpoint"><span>POST</span><code>/api/agent/evaluate</code><b>EIP-191 signed envelope</b></div>
             <div className="code-grid agent-code"><div><p>Agent integration</p><pre><code>{agentExample}</code></pre></div><div><p>Discovery and artifacts</p><pre><code>{`GET /.well-known/themis-agent.json
 GET /api/agent/manifest
+GET /api/agent/challenge
 GET /api/contracts/themis-escrow
 GET /api/og/status
 

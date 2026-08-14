@@ -137,6 +137,7 @@ Additional operational endpoints:
 - `GET /api/health` — returns the verifier service status and version.
 - `GET /api/og/status` — checks the configured 0G RPC, reports the latest block, and shows whether Compute and Storage signers are configured.
 - `GET /.well-known/themis-agent.json` — machine-readable discovery manifest for 0G agents.
+- `GET /api/agent/challenge` — returns a server-timed nonce so clients do not depend on synchronized clocks.
 - `POST /api/agent/evaluate` — verifies an EIP-191 agent envelope and optionally an ERC-7857 Agentic ID.
 - `GET /api/contracts/themis-escrow` — returns the compiled ABI and Cancun bytecode for agent or wallet deployment.
 
@@ -235,6 +236,7 @@ flowchart LR
     Docs["app/docs/page.tsx<br/>Protocol docs"]
     Evaluate["POST /api/evaluate"]
     AgentEvaluate["POST /api/agent/evaluate<br/>EIP-191 verification"]
+    Challenge["GET /api/agent/challenge<br/>Server time + nonce"]
     Manifest["/.well-known/themis-agent.json<br/>Agent discovery"]
     Artifact["/api/contracts/themis-escrow<br/>ABI + bytecode"]
     Health["GET /api/health"]
@@ -265,6 +267,7 @@ flowchart LR
   Buyer --> Docs
   Worker --> Evaluate
   Worker --> Manifest
+  Worker --> Challenge
   Worker --> AgentEvaluate
   UI --> Evaluate
   Evaluate --> Engine

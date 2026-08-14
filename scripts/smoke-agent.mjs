@@ -22,8 +22,9 @@ const previewResponse = await fetch(`${baseUrl}/api/evaluate`, {
 if (!previewResponse.ok) throw new Error(`Preview failed: ${previewResponse.status}`);
 const preview = await previewResponse.json();
 
-const timestamp = Date.now();
-const nonce = "smoke-agent-001";
+const challengeResponse = await fetch(`${baseUrl}/api/agent/challenge`, { cache: "no-store" });
+if (!challengeResponse.ok) throw new Error(`Challenge failed: ${challengeResponse.status}`);
+const { timestamp, nonce } = await challengeResponse.json();
 const message = [
   "THEMIS_AGENT_REQUEST_V1",
   `address=${getAddress(wallet.address)}`,

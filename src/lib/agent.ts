@@ -136,6 +136,7 @@ export function getAgentManifest(origin: string) {
       requestTtlSeconds: AGENT_REQUEST_TTL_MS / 1000,
     },
     endpoints: {
+      challenge: `${origin}/api/agent/challenge`,
       evaluate: `${origin}/api/agent/evaluate`,
       unsignedEvaluate: `${origin}/api/evaluate`,
       contractArtifact: `${origin}/api/contracts/themis-escrow`,
