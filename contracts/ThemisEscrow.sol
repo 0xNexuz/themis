@@ -21,18 +21,39 @@ contract ThemisEscrow {
 
     uint256 public nextTaskId;
     mapping(uint256 => Task) public tasks;
+    address public owner;
+    address public verifier;
     bool private locked;
 
     event TaskCreated(uint256 indexed taskId, address indexed buyer, address token, uint256 amount, bytes32 policyHash);
     event TaskAccepted(uint256 indexed taskId, address indexed worker);
     event EvidenceSubmitted(uint256 indexed taskId, bytes32 indexed evidenceHash);
     event TaskSettled(uint256 indexed taskId, Status status, address recipient, uint256 amount);
+    event VerifierUpdated(address indexed previousVerifier, address indexed newVerifier);
+
+    constructor(address initialVerifier) {
+        require(initialVerifier != address(0), "VERIFIER_REQUIRED");
+        owner = msg.sender;
+        verifier = initialVerifier;
+    }
 
     modifier nonReentrant() {
         require(!locked, "REENTRANT");
         locked = true;
         _;
         locked = false;
+    }
+
+    modifier onlyOwner() {
+        require(msg.sender == owner, "OWNER_ONLY");
+        _;
+    }
+
+    function updateVerifier(address newVerifier) external onlyOwner {
+        require(newVerifier != address(0), "VERIFIER_REQUIRED");
+        address previousVerifier = verifier;
+        verifier = newVerifier;
+        emit VerifierUpdated(previousVerifier, newVerifier);
     }
 
     function createTask(IERC20 token, uint256 amount, bytes32 policyHash) external nonReentrant returns (uint256 taskId) {
@@ -71,5 +92,55 @@ contract ThemisEscrow {
         task.status = release ? Status.Released : Status.Refunded;
         require(task.token.transfer(recipient, task.amount), "TRANSFER_FAILED");
         emit TaskSettled(taskId, task.status, recipient, task.amount);
+    }
+
+    function settleWithReceipt(
+        uint256 taskId,
+        bool release,
+        uint256 deadline,
+        bytes calldata signature
+    ) external nonReentrant {
+        Task storage task = tasks[taskId];
+        require(task.status == Status.Submitted, "EVIDENCE_NOT_SUBMITTED");
+        require(block.timestamp <= deadline, "RECEIPT_EXPIRED");
+
+        bytes32 authorizationHash = keccak256(
+            abi.encode(address(this), block.chainid, taskId, task.evidenceHash, release, deadline)
+        );
+        require(_recoverSigner(authorizationHash, signature) == verifier, "INVALID_RECEIPT");
+        _settle(task, taskId, release);
+    }
+
+    function settlementAuthorizationHash(
+        uint256 taskId,
+        bool release,
+        uint256 deadline
+    ) external view returns (bytes32) {
+        Task storage task = tasks[taskId];
+        return keccak256(abi.encode(address(this), block.chainid, taskId, task.evidenceHash, release, deadline));
+    }
+
+    function _settle(Task storage task, uint256 taskId, bool release) private {
+        address recipient = release ? task.worker : task.buyer;
+        task.status = release ? Status.Released : Status.Refunded;
+        require(task.token.transfer(recipient, task.amount), "TRANSFER_FAILED");
+        emit TaskSettled(taskId, task.status, recipient, task.amount);
+    }
+
+    function _recoverSigner(bytes32 messageHash, bytes calldata signature) private pure returns (address) {
+        require(signature.length == 65, "INVALID_SIGNATURE_LENGTH");
+        bytes32 r;
+        bytes32 s;
+        uint8 v;
+        assembly {
+            r := calldataload(signature.offset)
+            s := calldataload(add(signature.offset, 32))
+            v := byte(0, calldataload(add(signature.offset, 64)))
+        }
+        if (v < 27) v += 27;
+        require(v == 27 || v == 28, "INVALID_SIGNATURE_V");
+        require(uint256(s) <= 0x7fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a0, "INVALID_SIGNATURE_S");
+        bytes32 ethSignedHash = keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", messageHash));
+        return ecrecover(ethSignedHash, v, r, s);
     }
 }

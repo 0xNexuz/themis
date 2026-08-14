@@ -7,6 +7,18 @@ export type EvaluationInput = {
   result: { summary: string; sources: string[]; amount: number; sensitiveData?: boolean };
 };
 
+export function isEvaluationInput(value: unknown): value is EvaluationInput {
+  if (!value || typeof value !== "object") return false;
+  const input = value as Partial<EvaluationInput>;
+  return typeof input.task === "string"
+    && typeof input.maxSpend === "number"
+    && Boolean(input.result)
+    && typeof input.result?.summary === "string"
+    && Array.isArray(input.result?.sources)
+    && input.result.sources.every((source) => typeof source === "string")
+    && typeof input.result?.amount === "number";
+}
+
 export function evaluateEvidence(input: EvaluationInput) {
   const minSources = input.constraints?.minSources ?? 1;
   const disallowSensitiveData = input.constraints?.disallowSensitiveData ?? true;

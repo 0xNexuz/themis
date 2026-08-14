@@ -10,7 +10,7 @@ The project includes a live proof console, a deterministic evaluator API, option
 
 ## Demo
 
-- Live app: [themis-steel.vercel.app](https://themis-steel.vercel.app)
+- Live app: [themis0g.vercel.app](https://themis0g.vercel.app)
 - Documentation: open `/docs` in the app or run the project locally
 - Repository: [github.com/0xNexuz/themis](https://github.com/0xNexuz/themis)
 
@@ -68,6 +68,7 @@ The default 0G Galileo RPC is read by the app automatically, so the proof simula
 | `pnpm test` | Run Vitest in watch mode |
 | `pnpm test:run` | Run the test suite once |
 | `pnpm contract:compile` | Compile `contracts/ThemisEscrow.sol` with `solc` |
+| `pnpm smoke:agent` | Exercise a signed agent request and discovery endpoints |
 | `pnpm check` | Run tests, compile the contract, and build the app |
 
 For a pre-review verification pass, run:
@@ -135,6 +136,9 @@ Additional operational endpoints:
 
 - `GET /api/health` — returns the verifier service status and version.
 - `GET /api/og/status` — checks the configured 0G RPC, reports the latest block, and shows whether Compute and Storage signers are configured.
+- `GET /.well-known/themis-agent.json` — machine-readable discovery manifest for 0G agents.
+- `POST /api/agent/evaluate` — verifies an EIP-191 agent envelope and optionally an ERC-7857 Agentic ID.
+- `GET /api/contracts/themis-escrow` — returns the compiled ABI and Cancun bytecode for agent or wallet deployment.
 
 ## 0G integration
 
@@ -143,7 +147,31 @@ The app targets the **0G Galileo Testnet**:
 - Chain ID: `16602`
 - Default RPC: `https://evmrpc-testnet.0g.ai`
 - Explorer: [chainscan-galileo.0g.ai](https://chainscan-galileo.0g.ai)
+- Faucet: [faucet.0g.ai](https://faucet.0g.ai/)
 - Storage indexer default: `https://indexer-storage-testnet-turbo.0g.ai`
+
+The integrated 0G components are:
+
+- **0G Chain:** live RPC status, wallet onboarding, contract deployment, and escrow settlement.
+- **0G Compute:** the official `@0gfoundation/0g-compute-ts-sdk` broker adapter for wallet-signed inference.
+- **0G Storage:** the official `@0gfoundation/0g-storage-ts-sdk` adapter for evidence commitments.
+- **Agentic identity:** signed EVM-agent envelopes with optional ERC-7857 ownership/approval verification against the Galileo Agentic ID registry.
+- **Agent discovery:** `/.well-known/themis-agent.json` publishes the network, identity scheme, APIs, and contract artifact.
+- **Settlement authorization:** the escrow accepts contract-bound, expiring verifier signatures when `THEMIS_VERIFIER_PRIVATE_KEY` is configured.
+
+The public demo performs deterministic verification without a custody key. Funded Compute, Storage, and receipt-signing operations activate only when their optional server-side signers are configured.
+
+## Wallet deployment
+
+Compilation is local and does not require a wallet:
+
+```bash
+pnpm contract:compile
+```
+
+The generated Cancun artifact is written to `src/generated/ThemisEscrow.json`. To deploy, open `/docs#deploy`, connect an EVM wallet to 0G Galileo (chain ID `16602`), fund it from `https://faucet.0g.ai/`, provide the verifier public address, and confirm the transaction in the wallet.
+
+The contract is an unaudited testnet implementation. Do not use it to custody valuable mainnet assets.
 
 ### Optional server-side configuration
 
@@ -154,18 +182,20 @@ OG_RPC_URL=https://evmrpc-testnet.0g.ai
 OG_STORAGE_INDEXER_URL=https://indexer-storage-testnet-turbo.0g.ai
 OG_COMPUTE_PRIVATE_KEY=
 OG_STORAGE_PRIVATE_KEY=
+THEMIS_VERIFIER_PRIVATE_KEY=
 ```
 
 - `OG_RPC_URL` overrides the chain RPC used by status, Compute, and Storage.
 - `OG_STORAGE_INDEXER_URL` overrides the 0G Storage indexer.
 - `OG_COMPUTE_PRIVATE_KEY` enables the wallet-signed Compute broker.
 - `OG_STORAGE_PRIVATE_KEY` enables evidence uploads to 0G Storage.
+- `THEMIS_VERIFIER_PRIVATE_KEY` enables expiring, contract-bound `settleWithReceipt` signatures. Deploy the escrow with this key's public address as `verifier`.
 
 Never commit private keys or expose them to browser code. The public demo intentionally does not custody funds, execute paid inference, or upload evidence unless these server-side variables are present.
 
 ## Escrow contract
 
-[`contracts/ThemisEscrow.sol`](contracts/ThemisEscrow.sol) implements an ERC-20 task escrow with non-reentrant create and settle paths.
+[`contracts/ThemisEscrow.sol`](contracts/ThemisEscrow.sol) implements an ERC-20 task escrow with non-reentrant paths, verifier rotation, manual buyer settlement, and verifier-signed receipt settlement.
 
 The contract lifecycle is:
 
@@ -177,7 +207,8 @@ Open -> Accepted -> Submitted -> Released
 - The buyer deposits tokens and a `policyHash` with `createTask`.
 - A different address accepts the task with `acceptTask`.
 - The assigned worker submits a non-zero `evidenceHash` with `submitEvidence`.
-- Only the buyer can call `settle`; the boolean argument chooses release to the worker or refund to the buyer.
+- The buyer can call `settle` directly, or any relayer can call `settleWithReceipt` with an unexpired signature from the configured verifier.
+- Receipt authorization binds the escrow address, chain ID, task ID, evidence hash, release/refund decision, and deadline.
 - Events record task creation, assignment, evidence submission, and settlement.
 
 Compile the contract locally with:
@@ -186,7 +217,7 @@ Compile the contract locally with:
 pnpm contract:compile
 ```
 
-The repository currently provides the contract source and compile script; deployment and production contract address management are separate steps.
+Compilation writes the ABI and Cancun bytecode to `src/generated/ThemisEscrow.json`. The docs page at `/docs#deploy` can deploy that artifact through an injected wallet without exposing a private key to the application.
 
 ## Architecture map
 
@@ -203,6 +234,9 @@ flowchart LR
     UI["app/page.tsx<br/>Proof console"]
     Docs["app/docs/page.tsx<br/>Protocol docs"]
     Evaluate["POST /api/evaluate"]
+    AgentEvaluate["POST /api/agent/evaluate<br/>EIP-191 verification"]
+    Manifest["/.well-known/themis-agent.json<br/>Agent discovery"]
+    Artifact["/api/contracts/themis-escrow<br/>ABI + bytecode"]
     Health["GET /api/health"]
     Status["GET /api/og/status"]
     Engine["lib/themis.ts<br/>Deterministic policy engine"]
@@ -213,10 +247,12 @@ flowchart LR
     RPC["0G RPC<br/>block status"]
     Compute["0G Compute adapter<br/>optional signer"]
     Storage["0G Storage adapter<br/>optional signer"]
+    AgenticID["ERC-7857 Agentic ID<br/>ownership / approvals"]
   end
 
   subgraph Settlement["On-chain settlement"]
     Escrow["contracts/ThemisEscrow.sol<br/>Open → Accepted → Submitted"]
+    Authorization["Expiring verifier signature"]
     Outcome["Released or Refunded"]
   end
 
@@ -228,8 +264,12 @@ flowchart LR
   Buyer --> UI
   Buyer --> Docs
   Worker --> Evaluate
+  Worker --> Manifest
+  Worker --> AgentEvaluate
   UI --> Evaluate
   Evaluate --> Engine
+  AgentEvaluate --> Engine
+  AgentEvaluate --> AgenticID
   Engine --> Receipt
   Receipt --> UI
 
@@ -242,7 +282,9 @@ flowchart LR
 
   Buyer --> Escrow
   Worker --> Escrow
-  Receipt -. "policyHash + evidenceHash" .-> Escrow
+  Artifact --> Buyer
+  Receipt --> Authorization
+  Authorization -. "settleWithReceipt" .-> Escrow
   Escrow --> Outcome
 
   Tests --> Engine

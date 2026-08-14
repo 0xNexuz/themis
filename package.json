@@ -10,6 +10,7 @@
     "test": "vitest",
     "test:run": "vitest run",
     "contract:compile": "node scripts/compile-contract.mjs",
+    "smoke:agent": "node scripts/smoke-agent.mjs",
     "check": "pnpm test:run && pnpm contract:compile && pnpm build"
   },
   "dependencies": {
