@@ -1,3 +1,7 @@
 allowBuilds:
+  blake-hash: true
+  bufferutil: true
+  es5-ext: true
   sharp: false
   unrs-resolver: false
+  utf-8-validate: true
