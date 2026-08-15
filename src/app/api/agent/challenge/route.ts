@@ -1,15 +1,14 @@
-import { randomBytes } from "node:crypto";
 import { NextResponse } from "next/server";
-import { AGENT_REQUEST_TTL_MS } from "@/lib/agent";
+import { AGENT_REQUEST_TTL_MS, issueAgentChallenge } from "@/lib/agent";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export function GET() {
-  const timestamp = Date.now();
+  const { timestamp, nonce } = issueAgentChallenge();
   return NextResponse.json({
     timestamp,
-    nonce: randomBytes(16).toString("hex"),
+    nonce,
     expiresAt: timestamp + AGENT_REQUEST_TTL_MS,
     signatureScheme: "eip191",
   }, {

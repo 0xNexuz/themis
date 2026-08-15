@@ -4,9 +4,9 @@ Proof-carrying commerce for autonomous AI agents on 0G.
 
 Themis is an evidence-gated settlement layer for agent-to-agent work. A buyer agent commits a task, spending limit, and acceptance policy; a worker submits an output and its evidence; Themis evaluates the bundle deterministically and returns a receipt that authorizes release or blocks payment.
 
-The project includes a live proof console, a deterministic evaluator API, optional 0G Compute and 0G Storage adapters, and a Solidity escrow contract for ERC-20 settlement.
+The project includes a live proof console, signed agent APIs, encrypted upload-first 0G Storage receipts, 0G Compute readiness attestations, Agentic ID verification, and a deployed Solidity escrow with disputes.
 
-> The public demo runs without custody keys. 0G Compute and 0G Storage writes are opt-in and only activate when their server-side signer variables are configured.
+> Production receipt issuance is fail-closed: evidence is AES-256-GCM encrypted and committed to 0G Storage before the receipt is returned.
 
 ## Demo
 
@@ -22,7 +22,7 @@ Themis models a paid task as a four-step trust loop:
 
 1. **Commit** — the buyer defines the task, maximum spend, minimum source count, and privacy requirements.
 2. **Execute** — a worker completes the task. The optional Compute adapter can create a wallet-signed 0G Compute broker for inference.
-3. **Prove** — the result is normalized and hashed. The optional Storage adapter can build a Merkle commitment and upload the evidence bundle through the official 0G Storage SDK.
+3. **Prove** — the result is normalized, hashed, AES-256-GCM encrypted, Merkle-committed, and uploaded through the official 0G Storage SDK.
 4. **Settle** — payment is released only when every policy check passes. Otherwise the decision is `blocked`.
 
 The evaluator currently checks:
@@ -139,6 +139,8 @@ Additional operational endpoints:
 - `GET /.well-known/themis-agent.json` — machine-readable discovery manifest for 0G agents.
 - `GET /api/agent/challenge` — returns a server-timed nonce so clients do not depend on synchronized clocks.
 - `POST /api/agent/evaluate` — verifies an EIP-191 agent envelope and optionally an ERC-7857 Agentic ID.
+- `POST /api/agent/actions` — returns unsigned Galileo calldata for task creation, acceptance, evidence submission, settlement, and disputes.
+- `GET /api/agent/identity/{agenticId}` — resolves the owner, approval, and metadata URI of a Galileo ERC-7857 identity.
 - `GET /api/contracts/themis-escrow` — returns the compiled ABI and Cancun bytecode for agent or wallet deployment.
 
 ## 0G integration
@@ -160,9 +162,9 @@ The integrated 0G components are:
 - **Agent discovery:** `/.well-known/themis-agent.json` publishes the network, identity scheme, APIs, and contract artifact.
 - **Settlement authorization:** the escrow accepts contract-bound, expiring verifier signatures when `THEMIS_VERIFIER_PRIVATE_KEY` is configured.
 
-The public demo performs deterministic verification without a custody key. Funded Compute, Storage, and receipt-signing operations activate only when their optional server-side signers are configured.
+The production service uses a dedicated low-balance Galileo operator. Signers and evidence-encryption material are encrypted server-side variables and never enter browser code.
 
-## Wallet deployment
+## Galileo deployment
 
 Compilation is local and does not require a wallet:
 
@@ -170,7 +172,7 @@ Compilation is local and does not require a wallet:
 pnpm contract:compile
 ```
 
-The generated Cancun artifact is written to `src/generated/ThemisEscrow.json`. To deploy, open `/docs#deploy`, connect an EVM wallet to 0G Galileo (chain ID `16602`), fund it from `https://faucet.0g.ai/`, provide the verifier public address, and confirm the transaction in the wallet.
+The generated Cancun artifact is written to `src/generated/ThemisEscrow.json`. The current Galileo deployment is [`0x46032577415dfaeddc9758a9d72bc16c47cb1c47`](https://chainscan-galileo.0g.ai/address/0x46032577415dfaeddc9758a9d72bc16c47cb1c47), created in [transaction `0x943449…d70c6d`](https://chainscan-galileo.0g.ai/tx/0x9434498acea695f7e2607fefe75c83eeb5055681121a9a45ad834c3281d70c6d).
 
 The contract is an unaudited testnet implementation. Do not use it to custody valuable mainnet assets.
 
@@ -184,6 +186,10 @@ OG_STORAGE_INDEXER_URL=https://indexer-storage-testnet-turbo.0g.ai
 OG_COMPUTE_PRIVATE_KEY=
 OG_STORAGE_PRIVATE_KEY=
 THEMIS_VERIFIER_PRIVATE_KEY=
+THEMIS_EVIDENCE_ENCRYPTION_KEY=
+THEMIS_CHALLENGE_SECRET=
+THEMIS_REQUIRE_STORAGE=true
+THEMIS_ESCROW_ADDRESS=0x46032577415dfaeddc9758a9d72bc16c47cb1c47
 ```
 
 - `OG_RPC_URL` overrides the chain RPC used by status, Compute, and Storage.
@@ -191,6 +197,9 @@ THEMIS_VERIFIER_PRIVATE_KEY=
 - `OG_COMPUTE_PRIVATE_KEY` enables the wallet-signed Compute broker.
 - `OG_STORAGE_PRIVATE_KEY` enables evidence uploads to 0G Storage.
 - `THEMIS_VERIFIER_PRIVATE_KEY` enables expiring, contract-bound `settleWithReceipt` signatures. Deploy the escrow with this key's public address as `verifier`.
+- `THEMIS_EVIDENCE_ENCRYPTION_KEY` is a 32-byte hex key used for AES-256-GCM evidence envelopes.
+- `THEMIS_REQUIRE_STORAGE=true` prevents receipt issuance if the 0G upload does not complete.
+- `THEMIS_CHALLENGE_SECRET` authenticates server-issued agent challenges.
 
 Never commit private keys or expose them to browser code. The public demo intentionally does not custody funds, execute paid inference, or upload evidence unless these server-side variables are present.
 
@@ -202,12 +211,15 @@ The contract lifecycle is:
 
 ```text
 Open -> Accepted -> Submitted -> Released
-                              \-> Refunded
+                      |       \-> Refunded (after challenge window)
+                      \-> Disputed -> Released / Refunded by resolver
 ```
 
 - The buyer deposits tokens and a `policyHash` with `createTask`.
 - A different address accepts the task with `acceptTask`.
 - The assigned worker submits a non-zero `evidenceHash` with `submitEvidence`.
+- Either party may call `disputeTask` during the 24-hour challenge window.
+- Only the resolver may call `resolveDispute`; refunds cannot bypass an active challenge window.
 - The buyer can call `settle` directly, or any relayer can call `settleWithReceipt` with an unexpired signature from the configured verifier.
 - Receipt authorization binds the escrow address, chain ID, task ID, evidence hash, release/refund decision, and deadline.
 - Events record task creation, assignment, evidence submission, and settlement.
@@ -218,7 +230,7 @@ Compile the contract locally with:
 pnpm contract:compile
 ```
 
-Compilation writes the ABI and Cancun bytecode to `src/generated/ThemisEscrow.json`. The docs page at `/docs#deploy` can deploy that artifact through an injected wallet without exposing a private key to the application.
+Compilation writes the ABI and Cancun bytecode to `src/generated/ThemisEscrow.json`. `pnpm contract:deploy` performs a chain-ID check, gas simulation, offline signing, broadcast, and receipt confirmation using the git-ignored local operator configuration.
 
 ## Architecture map
 

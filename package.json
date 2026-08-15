@@ -1,6 +1,6 @@
 {
   "name": "themis",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -10,6 +10,7 @@
     "test": "vitest",
     "test:run": "vitest run",
     "contract:compile": "node scripts/compile-contract.mjs",
+    "contract:deploy": "node --use-system-ca scripts/deploy-contract.mjs",
     "smoke:agent": "node scripts/smoke-agent.mjs",
     "check": "pnpm test:run && pnpm contract:compile && pnpm build"
   },
