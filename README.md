@@ -188,25 +188,65 @@ pnpm contract:compile
 
 The repository currently provides the contract source and compile script; deployment and production contract address management are separate steps.
 
-## Repository layout
+## Architecture map
 
-```text
-app/
-  page.tsx                 # Proof console and live demo
-  docs/page.tsx            # In-app protocol documentation
-  api/evaluate/route.ts    # Evidence evaluation endpoint
-  api/health/route.ts      # Verifier health endpoint
-  api/og/status/route.ts   # 0G chain and adapter status
-lib/
-  themis.ts                # Deterministic policy engine and receipts
-  themis.test.ts           # Policy engine tests
-  og/config.ts             # 0G network defaults
-  og/compute.ts            # Optional 0G Compute adapter
-  og/storage.ts             # Optional 0G Storage adapter
-contracts/
-  ThemisEscrow.sol         # ERC-20 escrow lifecycle
-scripts/
-  compile-contract.mjs     # Solidity compilation helper
+The following map shows how browser interactions, API routes, deterministic verification, optional 0G services, and escrow settlement fit together.
+
+```mermaid
+flowchart LR
+  subgraph Clients["Agents and users"]
+    Buyer["Buyer agent / browser"]
+    Worker["Worker agent"]
+  end
+
+  subgraph App["Themis Next.js application"]
+    UI["app/page.tsx<br/>Proof console"]
+    Docs["app/docs/page.tsx<br/>Protocol docs"]
+    Evaluate["POST /api/evaluate"]
+    Health["GET /api/health"]
+    Status["GET /api/og/status"]
+    Engine["lib/themis.ts<br/>Deterministic policy engine"]
+    Receipt["Proof receipt<br/>release or blocked"]
+  end
+
+  subgraph OG["0G Galileo Testnet · chainId 16602"]
+    RPC["0G RPC<br/>block status"]
+    Compute["0G Compute adapter<br/>optional signer"]
+    Storage["0G Storage adapter<br/>optional signer"]
+  end
+
+  subgraph Settlement["On-chain settlement"]
+    Escrow["contracts/ThemisEscrow.sol<br/>Open → Accepted → Submitted"]
+    Outcome["Released or Refunded"]
+  end
+
+  subgraph Verification["Build and verification"]
+    Tests["lib/themis.test.ts"]
+    Compile["scripts/compile-contract.mjs"]
+  end
+
+  Buyer --> UI
+  Buyer --> Docs
+  Worker --> Evaluate
+  UI --> Evaluate
+  Evaluate --> Engine
+  Engine --> Receipt
+  Receipt --> UI
+
+  Health --> HealthResponse["Verifier status"]
+  Status --> RPC
+  Status --> AdapterStatus["Compute / Storage readiness"]
+
+  Engine -. "optional funded inference" .-> Compute
+  Engine -. "optional evidence upload" .-> Storage
+
+  Buyer --> Escrow
+  Worker --> Escrow
+  Receipt -. "policyHash + evidenceHash" .-> Escrow
+  Escrow --> Outcome
+
+  Tests --> Engine
+  Compile --> Escrow
 ```
 
 ## Development notes
