@@ -1,6 +1,6 @@
 import { Wallet } from "ethers";
 import { describe, expect, it } from "vitest";
-import { buildAgentRequestMessage, verifyAgentIdentity } from "./agent";
+import { buildAgentRequestMessage, issueAgentChallenge, verifyAgentIdentity } from "./agent";
 import { evaluateEvidence } from "./themis";
 
 const evidence = {
@@ -18,10 +18,10 @@ const evidence = {
 describe("Themis agent authentication", () => {
   it("accepts a fresh EIP-191 request signed by the declared wallet", async () => {
     const wallet = new Wallet("0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d");
+    const challenge = issueAgentChallenge();
     const identity = {
       address: wallet.address,
-      timestamp: Date.now(),
-      nonce: "agent-test-001",
+      ...challenge,
     };
     const message = buildAgentRequestMessage(identity, evaluateEvidence(evidence).evidenceHash);
     const result = await verifyAgentIdentity({ ...identity, signature: await wallet.signMessage(message) }, evidence);
@@ -32,10 +32,10 @@ describe("Themis agent authentication", () => {
 
   it("rejects stale signed requests", async () => {
     const wallet = new Wallet("0x8b3a350cf5c34c9194ca3a545d03c5b5a5b8f5b0dfc6f5d6aee2e83f0d7b5d2a");
+    const timestamp = Date.now() - 10 * 60 * 1000;
     const identity = {
       address: wallet.address,
-      timestamp: Date.now() - 10 * 60 * 1000,
-      nonce: "agent-test-002",
+      ...issueAgentChallenge(timestamp),
     };
     const message = buildAgentRequestMessage(identity, evaluateEvidence(evidence).evidenceHash);
     await expect(verifyAgentIdentity({ ...identity, signature: await wallet.signMessage(message) }, evidence))

@@ -27,5 +27,6 @@ export async function GET() {
     chain: { online, blockNumber },
     compute: { sdk: true, configured: Boolean(process.env.OG_COMPUTE_PRIVATE_KEY) },
     storage: { sdk: true, configured: Boolean(process.env.OG_STORAGE_PRIVATE_KEY) },
+    escrow: { address: process.env.THEMIS_ESCROW_ADDRESS ?? "0x46032577415dfaeddc9758a9d72bc16c47cb1c47" },
   });
 }

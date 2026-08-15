@@ -16,7 +16,7 @@ const evidence = {
 
 const previewResponse = await fetch(`${baseUrl}/api/evaluate`, {
   method: "POST",
-  headers: { "Content-Type": "application/json" },
+  headers: { "Content-Type": "application/json", Origin: baseUrl },
   body: JSON.stringify(evidence),
 });
 if (!previewResponse.ok) throw new Error(`Preview failed: ${previewResponse.status}`);

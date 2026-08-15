@@ -9,6 +9,7 @@ import {
   keccak256,
   verifyMessage,
 } from "ethers";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { OG_NETWORK } from "./og/config";
 import { evaluateEvidence, type EvaluationInput } from "./themis";
 
@@ -35,6 +36,27 @@ export type AgentEvaluationEnvelope = {
   settlement?: SettlementRequest;
 };
 
+function challengeSecret() {
+  const secret = process.env.THEMIS_CHALLENGE_SECRET ?? process.env.THEMIS_VERIFIER_PRIVATE_KEY;
+  if (!secret && process.env.NODE_ENV === "production") throw new Error("CHALLENGE_SECRET_NOT_CONFIGURED");
+  if (!secret) return "themis-local-development-challenge-secret";
+  return secret;
+}
+
+export function issueAgentChallenge(timestamp = Date.now()) {
+  const random = randomBytes(8).toString("hex");
+  const signature = createHmac("sha256", challengeSecret()).update(`${timestamp}:${random}`).digest("hex");
+  return { timestamp, nonce: `${random}${signature}` };
+}
+
+function verifyChallenge(timestamp: number, nonce: string) {
+  if (!/^[a-f0-9]{80}$/.test(nonce)) return false;
+  const random = nonce.slice(0, 16);
+  const supplied = Buffer.from(nonce.slice(16), "hex");
+  const expected = createHmac("sha256", challengeSecret()).update(`${timestamp}:${random}`).digest();
+  return timingSafeEqual(supplied, expected);
+}
+
 export function buildAgentRequestMessage(
   identity: Omit<AgentIdentity, "signature">,
   evidenceHash: string,
@@ -54,7 +76,7 @@ export async function verifyAgentIdentity(identity: AgentIdentity, evidence: Eva
   if (!Number.isSafeInteger(identity.timestamp) || Math.abs(Date.now() - identity.timestamp) > AGENT_REQUEST_TTL_MS) {
     throw new Error("STALE_AGENT_REQUEST");
   }
-  if (!/^[a-zA-Z0-9_-]{8,96}$/.test(identity.nonce)) throw new Error("INVALID_NONCE");
+  if (!verifyChallenge(identity.timestamp, identity.nonce)) throw new Error("INVALID_CHALLENGE");
 
   const receipt = evaluateEvidence(evidence);
   const message = buildAgentRequestMessage(identity, receipt.evidenceHash);
@@ -138,11 +160,17 @@ export function getAgentManifest(origin: string) {
     endpoints: {
       challenge: `${origin}/api/agent/challenge`,
       evaluate: `${origin}/api/agent/evaluate`,
+      actions: `${origin}/api/agent/actions`,
+      identityLookup: `${origin}/api/agent/identity/{agenticId}`,
       unsignedEvaluate: `${origin}/api/evaluate`,
       contractArtifact: `${origin}/api/contracts/themis-escrow`,
       health: `${origin}/api/health`,
       networkStatus: `${origin}/api/og/status`,
       documentation: `${origin}/docs#agents`,
+    },
+    escrow: {
+      address: process.env.THEMIS_ESCROW_ADDRESS ?? "0x46032577415dfaeddc9758a9d72bc16c47cb1c47",
+      disputeWindowSeconds: 86400,
     },
   };
 }
