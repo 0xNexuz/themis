@@ -2,7 +2,7 @@ import { createCipheriv, randomBytes } from "node:crypto";
 import { listInferenceServices } from "./og/compute";
 import { uploadEvidenceBundle } from "./og/storage";
 import { audit } from "./security";
-import { evaluateEvidence, type EvaluationInput } from "./themis";
+import { evaluateEvidence, type EvaluationInput, type ProtocolEvaluationInput } from "./themis";
 
 function encryptionKey() {
   const configured = process.env.THEMIS_EVIDENCE_ENCRYPTION_KEY?.replace(/^0x/, "");
@@ -24,13 +24,13 @@ export function encryptEvidence(bundle: unknown) {
   };
 }
 
-export async function finalizeEvidence(input: EvaluationInput, existing = evaluateEvidence(input)) {
+export async function finalizeEvidence(input: EvaluationInput | ProtocolEvaluationInput, existing = evaluateEvidence(input)) {
   const requireStorage = process.env.THEMIS_REQUIRE_STORAGE === "true";
   let compute: { status: string; serviceCount?: number; error?: string } = { status: "unconfigured" };
   if (process.env.OG_COMPUTE_PRIVATE_KEY) {
     try {
       const services = await listInferenceServices();
-      compute = { status: "attested", serviceCount: Array.isArray(services) ? services.length : undefined };
+      compute = { status: "available", serviceCount: Array.isArray(services) ? services.length : undefined };
     } catch (error) {
       compute = { status: "degraded", error: error instanceof Error ? error.message : "COMPUTE_ATTESTATION_FAILED" };
     }

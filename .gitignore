@@ -2,6 +2,7 @@
 
 # dependencies
 /node_modules
+**/node_modules/
 /.pnp
 .pnp.*
 .yarn/*
@@ -12,6 +13,8 @@
 
 # testing
 /coverage
+/artifacts
+/.hardhat-cache
 
 # next.js
 /.next/

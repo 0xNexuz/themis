@@ -1,7 +1,8 @@
 {
   "name": "themis",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -12,17 +13,24 @@
     "contract:compile": "node scripts/compile-contract.mjs",
     "contract:deploy": "node --use-system-ca scripts/deploy-contract.mjs",
     "smoke:agent": "node scripts/smoke-agent.mjs",
-    "check": "pnpm test:run && pnpm contract:compile && pnpm build"
+    "contract:test": "hardhat test",
+    "check": "pnpm test:run && pnpm contract:test && pnpm contract:compile && pnpm lint && pnpm build"
   },
   "dependencies": {
+    "@themis-protocol/sdk": "workspace:*",
+    "@upstash/redis": "^1.35.3",
     "@0gfoundation/0g-compute-ts-sdk": "^0.9.0",
     "@0gfoundation/0g-storage-ts-sdk": "^1.2.11",
     "ethers": "^6.17.0",
     "next": "16.3.0",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "zod": "^4.1.12"
   },
   "devDependencies": {
+    "@nomicfoundation/hardhat-ethers": "^4.0.3",
+    "@nomicfoundation/hardhat-node-test-runner": "^3.0.2",
+    "@openzeppelin/contracts": "^5.4.0",
     "@tailwindcss/postcss": "^4",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.2",
@@ -32,6 +40,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.3.0",
+    "hardhat": "^3.0.9",
     "jsdom": "^30.0.1",
     "solc": "^0.8.36",
     "tailwindcss": "^4",

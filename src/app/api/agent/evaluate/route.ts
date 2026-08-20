@@ -18,7 +18,7 @@ function isAgentEnvelope(value: unknown): value is AgentEvaluationEnvelope {
 }
 
 export async function POST(request: Request) {
-  const rate = checkRateLimit(request, "agent-evaluate", 30);
+  const rate = await checkRateLimit(request, "agent-evaluate", 30);
   if (!rate.allowed) return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429, headers: { "Retry-After": String(rate.retryAfter) } });
   try {
     const payload = (await request.json()) as unknown;

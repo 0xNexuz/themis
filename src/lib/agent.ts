@@ -1,17 +1,16 @@
 import {
-  AbiCoder,
   Contract,
   JsonRpcProvider,
   Wallet,
   getAddress,
-  getBytes,
   isAddress,
-  keccak256,
   verifyMessage,
+  verifyTypedData,
 } from "ethers";
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { OG_NETWORK } from "./og/config";
 import { evaluateEvidence, type EvaluationInput } from "./themis";
+import { consumeNonce } from "./job-store";
 
 export const AGENTIC_ID_REGISTRY = "0x2700F6A3e505402C9daB154C5c6ab9cAEC98EF1F";
 export const AGENT_REQUEST_TTL_MS = 5 * 60 * 1000;
@@ -22,12 +21,21 @@ export type AgentIdentity = {
   timestamp: number;
   nonce: string;
   signature: string;
+  scheme?: "eip191" | "eip712";
+  method?: string;
+  path?: string;
+  bodyHash?: string;
 };
 
 export type SettlementRequest = {
   escrowAddress: string;
   taskId: string;
   deadline: number;
+  buyer: string;
+  worker: string;
+  policyHash: string;
+  amount: string;
+  nonce: string;
 };
 
 export type AgentEvaluationEnvelope = {
@@ -71,6 +79,14 @@ export function buildAgentRequestMessage(
   ].join("\n");
 }
 
+export function buildAgentRequestTypedData(identity: Omit<AgentIdentity, "signature">, evidenceHash: string) {
+  return {
+    domain: { name: "Themis Agent API", version: "2", chainId: OG_NETWORK.chainId },
+    types: { AgentRequest: [{ name: "address", type: "address" }, { name: "agenticId", type: "string" }, { name: "timestamp", type: "uint256" }, { name: "nonce", type: "string" }, { name: "method", type: "string" }, { name: "path", type: "string" }, { name: "bodyHash", type: "bytes32" }, { name: "evidenceHash", type: "bytes32" }] },
+    value: { address: getAddress(identity.address), agenticId: identity.agenticId ?? "none", timestamp: identity.timestamp, nonce: identity.nonce, method: identity.method ?? "POST", path: identity.path ?? "/api/agent/evaluate", bodyHash: identity.bodyHash ?? evidenceHash, evidenceHash },
+  };
+}
+
 export async function verifyAgentIdentity(identity: AgentIdentity, evidence: EvaluationInput) {
   if (!isAddress(identity.address)) throw new Error("INVALID_AGENT_ADDRESS");
   if (!Number.isSafeInteger(identity.timestamp) || Math.abs(Date.now() - identity.timestamp) > AGENT_REQUEST_TTL_MS) {
@@ -80,9 +96,11 @@ export async function verifyAgentIdentity(identity: AgentIdentity, evidence: Eva
 
   const receipt = evaluateEvidence(evidence);
   const message = buildAgentRequestMessage(identity, receipt.evidenceHash);
-  const recovered = getAddress(verifyMessage(message, identity.signature));
+  const typed = buildAgentRequestTypedData(identity, receipt.evidenceHash);
+  const recovered = getAddress(identity.scheme === "eip712" ? verifyTypedData(typed.domain, typed.types, typed.value, identity.signature) : verifyMessage(message, identity.signature));
   const requested = getAddress(identity.address);
   if (recovered !== requested) throw new Error("INVALID_AGENT_SIGNATURE");
+  if (!(await consumeNonce(identity.nonce))) throw new Error("REPLAYED_AGENT_REQUEST");
 
   let agenticIdVerified = false;
   if (identity.agenticId !== undefined) {
@@ -125,16 +143,14 @@ export async function signSettlementAuthorization(
     throw new Error("INVALID_SETTLEMENT_DEADLINE");
   }
 
-  const coder = AbiCoder.defaultAbiCoder();
-  const hash = keccak256(coder.encode(
-    ["address", "uint256", "uint256", "bytes32", "bool", "uint256"],
-    [settlement.escrowAddress, OG_NETWORK.chainId, settlement.taskId, evidenceHash, release, settlement.deadline],
-  ));
   const wallet = new Wallet(privateKey);
+  const receipt = { taskId: settlement.taskId, buyer: settlement.buyer, worker: settlement.worker, policyHash: settlement.policyHash, evidenceHash, amount: settlement.amount, decision: release ? 0 : 1, nonce: settlement.nonce, deadline: settlement.deadline };
+  const domain = { name: "ThemisEscrow", version: "2", chainId: OG_NETWORK.chainId, verifyingContract: settlement.escrowAddress };
+  const types = { SettlementReceipt: [{ name: "taskId", type: "uint256" }, { name: "buyer", type: "address" }, { name: "worker", type: "address" }, { name: "policyHash", type: "bytes32" }, { name: "evidenceHash", type: "bytes32" }, { name: "amount", type: "uint256" }, { name: "decision", type: "uint8" }, { name: "nonce", type: "uint256" }, { name: "deadline", type: "uint256" }] };
   return {
     verifier: wallet.address,
-    hash,
-    signature: await wallet.signMessage(getBytes(hash)),
+    signature: await wallet.signTypedData(domain, types, receipt),
+    receipt,
     ...settlement,
     release,
   };
@@ -143,8 +159,8 @@ export async function signSettlementAuthorization(
 export function getAgentManifest(origin: string) {
   return {
     name: "Themis",
-    version: "0.2.0",
-    description: "Evidence-gated settlement and proof receipts for autonomous agents on 0G.",
+    version: "0.4.0",
+    description: "Proof-carrying commerce infrastructure for autonomous agents on 0G.",
     network: {
       name: OG_NETWORK.name,
       chainId: OG_NETWORK.chainId,
@@ -153,7 +169,7 @@ export function getAgentManifest(origin: string) {
       faucet: "https://faucet.0g.ai/",
     },
     identity: {
-      scheme: "eip191",
+      schemes: ["eip712-v2", "eip191-v1-compatibility"],
       agenticId: { optional: true, registry: AGENTIC_ID_REGISTRY, standard: "ERC-7857" },
       requestTtlSeconds: AGENT_REQUEST_TTL_MS / 1000,
     },
@@ -169,8 +185,13 @@ export function getAgentManifest(origin: string) {
       documentation: `${origin}/docs#agents`,
     },
     escrow: {
-      address: process.env.THEMIS_ESCROW_ADDRESS ?? "0x46032577415dfaeddc9758a9d72bc16c47cb1c47",
+      address: process.env.THEMIS_ESCROW_ADDRESS ?? "0x0B1Cdef5CE5EE077BFEC7d8B50C3fE3073857640",
+      version: 2,
       disputeWindowSeconds: 86400,
     },
+    protocol: { policySchema: "themis.policy.v1", evidenceSchema: "themis.evidence.v1", receiptSchema: "themis.receipt.v1", policyTemplates: ["research", "code-delivery", "data-delivery", "custom"], decisions: ["release", "block", "dispute"] },
+    sdk: { package: "@themis-protocol/sdk", version: "0.4.0", publishStatus: "source-available" },
+    demoAsset: { symbol: "dUSDC", noValue: true, address: process.env.THEMIS_DEMO_USDC_ADDRESS ?? null },
+    capabilities: { computeInference: Boolean(process.env.OG_COMPUTE_PRIVATE_KEY), encryptedStorage: Boolean(process.env.OG_STORAGE_PRIVATE_KEY), durableJobs: Boolean(process.env.UPSTASH_REDIS_REST_URL), liveSettlement: Boolean(process.env.THEMIS_DEMO_USDC_ADDRESS && process.env.THEMIS_ESCROW_ADDRESS) },
   };
 }
