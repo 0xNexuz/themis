@@ -6,17 +6,20 @@ import { useEffect, useRef, useState } from "react";
 type Receipt = {
   receiptId: string;
   evidenceHash: string;
-  decision: "release" | "blocked";
+  decision: "release" | "block" | "blocked";
   checks: { key: string; label: string; passed: boolean; detail: string }[];
 };
 
 type NetworkStatus = {
   chain: { online: boolean; blockNumber: string | null };
-  compute: { sdk: boolean; configured: boolean };
-  storage: { sdk: boolean; configured: boolean };
+  compute: { sdk: boolean; signerConfigured: boolean; providerConfigured: boolean };
+  storage: { sdk: boolean; signerConfigured: boolean; encryptionConfigured: boolean };
 };
 
-const proofSteps = ["Task committed", "Output sealed", "Policy verified", "Settlement authorized"];
+const proofSteps = ["TASK", "WORK", "EVIDENCE", "POLICY CHECKS", "PAYMENT"];
+const scenarioOptions = [
+  ["valid", "VALID WORKER"], ["fake-sources", "FAKE SOURCES"], ["insufficient-sources", "INSUFFICIENT SOURCES"], ["over-budget", "OVER BUDGET"], ["wrong-worker", "WRONG WORKER"], ["invalid-agentic-id", "INVALID AGENTIC ID"], ["tampered-artifact", "TAMPERED ARTIFACT"], ["missing-storage", "MISSING STORAGE COMMITMENT"], ["invalid-compute", "INVALID COMPUTE ATTESTATION"], ["sensitive-data", "SENSITIVE DATA LEAK"], ["expired-receipt", "EXPIRED RECEIPT"], ["replayed-receipt", "REPLAYED RECEIPT"], ["policy-tampering", "POLICY TAMPERING"],
+] as const;
 
 export default function Home() {
   const heroRef = useRef<HTMLElement>(null);
@@ -24,7 +27,8 @@ export default function Home() {
   const [running, setRunning] = useState(false);
   const [activeStep, setActiveStep] = useState(-1);
   const [receipt, setReceipt] = useState<Receipt | null>(null);
-  const [scenario, setScenario] = useState<"valid" | "blocked">("valid");
+  const [scenario, setScenario] = useState<(typeof scenarioOptions)[number][0]>("valid");
+  const [demoMode, setDemoMode] = useState<"live" | "break">("break");
   const [wallet, setWallet] = useState<string | null>(null);
   const [message, setMessage] = useState("");
   const [network, setNetwork] = useState<NetworkStatus | null>(null);
@@ -82,25 +86,19 @@ export default function Home() {
     setActiveStep(0);
     const timers = [1, 2].map((step) => window.setTimeout(() => setActiveStep(step), step * 580));
     try {
-      const response = await fetch("/api/evaluate", {
+      const response = await fetch(demoMode === "live" ? "/api/demo/jobs" : "/api/adversarial", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          task: "Produce a source-grounded risk brief for the buyer agent",
-          maxSpend: 0.25,
-          constraints: { minSources: 2, disallowSensitiveData: true },
-          result: scenario === "valid"
-            ? { summary: "Verified provider signals indicate a stable execution path with bounded downside.", sources: ["0G Compute attestation", "0G Storage commitment"], amount: 0.18, sensitiveData: false }
-            : { summary: "Unverified result containing restricted customer information.", sources: [], amount: 0.42, sensitiveData: true },
-        }),
+        body: JSON.stringify(demoMode === "live" ? {} : { scenario }),
       });
-      if (!response.ok) throw new Error("Evaluation failed");
-      const result = (await response.json()) as Receipt;
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "Evaluation failed");
+      const result = demoMode === "live" ? { receiptId: `THM-${payload.result.evidenceHash.slice(2, 10).toUpperCase()}`, evidenceHash: payload.result.evidenceHash, decision: "release", checks: payload.result.steps.map((step: { key: string; detail: string }) => ({ key: step.key, label: step.key.toUpperCase(), passed: true, detail: step.detail })) } as Receipt : payload as Receipt;
       await new Promise((resolve) => window.setTimeout(resolve, 520));
       setActiveStep(3);
       setReceipt(result);
-    } catch {
-      setMessage("The verifier could not be reached. Please retry.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "The verifier could not be reached. Please retry.");
     } finally {
       timers.forEach(window.clearTimeout);
       setRunning(false);
@@ -133,13 +131,13 @@ export default function Home() {
         </header>
 
         <div className="status status-top"><span>Network</span><strong>{online ? "0G Galileo / Live" : "0G Galileo / Checking"}</strong></div>
-        <div className="status status-left"><span>Policy layer</span><strong>3 checks armed</strong></div>
+        <div className="status status-left"><span>Policy layer</span><strong>Typed policies armed</strong></div>
         <div className="status status-right"><span>Settlement</span><strong>Evidence-gated</strong></div>
 
         <div className="hero-bottom">
           <div className="hero-copy">
             <p className="eyebrow">Proof-carrying commerce for autonomous agents</p>
-            <h1 id="hero-title" aria-label="Where intelligence becomes accountable.">Where intelligence<br />becomes accountable.</h1>
+            <h1 id="hero-title" aria-label="AI agents can hire each other. Themis makes them prove the work before payment.">AI agents can hire each other.<br />Prove the work before payment.</h1>
           </div>
           <div className="hero-action">
             <p>Agents hire, verify, and pay other agents. Every settlement carries its own inspectable evidence.</p>
@@ -149,7 +147,7 @@ export default function Home() {
         </div>
 
         <div className="hero-footer">
-          <span>Proof protocol · v0.1</span>
+          <span>Proof protocol · v0.4</span>
           <span><i className={online ? "live-pip" : "live-pip waiting"} />{online ? `Chain live · block ${network?.chain.blockNumber}` : "Checking chain"}</span>
           <span>Scroll to inspect ↓</span>
         </div>
@@ -213,27 +211,28 @@ export default function Home() {
         <div className="demo-shell" role="dialog" aria-modal="true" aria-labelledby="demo-title">
           <button className="demo-backdrop" type="button" aria-label="Close proof simulator" onClick={() => !running && setDemoOpen(false)} />
           <section className="demo-panel">
-            <header><div><span className="mini-label">Live protocol simulation</span><h2 id="demo-title">Proof console</h2></div><button type="button" onClick={() => !running && setDemoOpen(false)} aria-label="Close">×</button></header>
+            <header><div><span className="mini-label">Proof-carrying agent commerce</span><h2 id="demo-title">Proof console</h2></div><button type="button" onClick={() => !running && setDemoOpen(false)} aria-label="Close">×</button></header>
             <div className="scenario-toggle">
-              <button type="button" className={scenario === "valid" ? "active" : ""} onClick={() => !running && setScenario("valid")}>Valid worker</button>
-              <button type="button" className={scenario === "blocked" ? "active" : ""} onClick={() => !running && setScenario("blocked")}>Adversarial worker</button>
+              <button type="button" className={demoMode === "live" ? "active" : ""} onClick={() => !running && setDemoMode("live")}>LIVE 0G</button>
+              <button type="button" className={demoMode === "break" ? "active" : ""} onClick={() => !running && setDemoMode("break")}>BREAK THEMIS</button>
             </div>
-            <div className="task-brief"><div><span>Buyer task</span><strong>Source-grounded risk brief</strong></div><div><span>Escrow</span><strong>0.25 0G</strong></div><div><span>Required</span><strong>2 sources · no PII</strong></div></div>
+            {demoMode === "break" && <label className="scenario-picker"><span>Adversarial scenario</span><select value={scenario} onChange={(event) => setScenario(event.target.value as typeof scenario)} disabled={running}>{scenarioOptions.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>}
+            <div className="task-brief"><div><span>Task #1042</span><strong>Source-grounded risk brief</strong></div><div><span>Budget</span><strong>25 DemoUSDC</strong></div><div><span>Policy</span><strong>Research Quality v1</strong></div></div>
             <ol className="proof-timeline">
               {proofSteps.map((step, index) => {
-                const complete = receipt ? index <= 3 : index < activeStep;
+                const complete = receipt ? index <= 4 : index < activeStep;
                 const current = !receipt && index === activeStep;
                 return <li className={complete ? "complete" : current ? "current" : ""} key={step}><span>{complete ? "✓" : index + 1}</span><p>{step}</p><i /></li>;
               })}
             </ol>
             {receipt ? (
               <div className={`live-receipt ${receipt.decision}`}>
-                <header><div><span>{receipt.receiptId}</span><strong>{receipt.decision === "release" ? "Payment authorized" : "Payment blocked"}</strong></div><b>{receipt.decision === "release" ? "✓" : "!"}</b></header>
+                <header><div><span>{receipt.receiptId}</span><strong>{receipt.decision === "release" ? "PAYMENT RELEASED" : "SETTLEMENT BLOCKED"}</strong></div><b>{receipt.decision === "release" ? "✓" : "!"}</b></header>
                 <div className="live-checks">{receipt.checks.map((check) => <div key={check.key}><span className={check.passed ? "pass" : "fail"}>{check.passed ? "PASS" : "FAIL"}</span><p>{check.label}</p><small>{check.detail}</small></div>)}</div>
                 <div className="receipt-hash"><span>Evidence commitment</span><code>{receipt.evidenceHash}</code></div>
               </div>
             ) : <div className="console-idle"><span /><p>{running ? "Carrying proof through the policy mesh…" : "Ready to inspect the worker output."}</p></div>}
-            <button className="run-button" type="button" onClick={runProof} disabled={running}>{running ? "Verifying evidence…" : receipt ? "Run again" : "Execute proof"}<span>↗</span></button>
+            <button className="run-button" type="button" onClick={runProof} disabled={running}>{running ? "Verifying evidence…" : receipt ? "Run again" : demoMode === "live" ? "Execute live workflow" : "Test policy defenses"}<span>↗</span></button>
           </section>
         </div>
       )}

@@ -6,7 +6,7 @@ import { audit, checkRateLimit, isAuthorizedUnsignedRequest } from "@/lib/securi
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
-  const rate = checkRateLimit(request, "evaluate", 12);
+  const rate = await checkRateLimit(request, "evaluate", 12);
   if (!rate.allowed) return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429, headers: { "Retry-After": String(rate.retryAfter) } });
   if (!isAuthorizedUnsignedRequest(request)) return NextResponse.json({ error: "Use a same-origin request, API bearer key, or the signed agent endpoint" }, { status: 401 });
   try {

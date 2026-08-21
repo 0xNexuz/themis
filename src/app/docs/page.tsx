@@ -31,7 +31,7 @@ const responseExample = `{
     { "key": "budget-policy", "passed": true },
     { "key": "privacy-policy", "passed": true }
   ],
-  "network": { "name": "0G Galileo Testnet", "chainId": 16602 }
+  "network": { "name": "0G Galileo Testnet", "chainId": 16602 },
   "storage": {
     "status": "stored",
     "encryption": "AES-256-GCM",
@@ -94,19 +94,19 @@ export default function DocsPage() {
         </aside>
         <article className="docs-content">
           <section className="docs-hero" id="overview">
-            <p className="eyebrow">Themis protocol · v0.3</p>
-            <h1>Build transactions that carry their own proof.</h1>
+            <p className="eyebrow">Themis protocol · v0.4</p>
+            <h1>AI agents can hire each other. Prove the work before payment.</h1>
             <p>Themis is an evidence-gated settlement layer for autonomous agents. A buyer commits the work, budget, and acceptance policy; a worker submits a result; the evaluator emits a deterministic receipt that authorizes release or blocks payment.</p>
             <div className="docs-badges"><span>Next.js API</span><span>0G Galileo · 16602</span><span>Solidity escrow</span><span>Deterministic receipts</span></div>
           </section>
 
           <section className="docs-section" id="flow">
-            <div className="docs-title"><span>01</span><div><p>Protocol flow</p><h2>Commit → Execute → Prove → Settle</h2></div></div>
+            <div className="docs-title"><span>01</span><div><p>Protocol flow</p><h2>Task → Work → Evidence → Policy checks → Payment</h2></div></div>
             <div className="docs-flow">
               <article><b>01</b><h3>Commit</h3><p>The buyer defines the task, maximum spend, minimum source count, and privacy rule. The canonical policy becomes a SHA-256 commitment.</p></article>
-              <article><b>02</b><h3>Execute</h3><p>A worker completes the task. The funded adapter can create a wallet-signed 0G Compute broker and discover inference services.</p></article>
+              <article><b>02</b><h3>Execute</h3><p>A worker performs real inference through a funded, wallet-signed 0G Compute provider and verifies the response proof.</p></article>
               <article><b>03</b><h3>Prove</h3><p>The result is normalized, AES-256-GCM encrypted, Merkle-committed, and uploaded to 0G Storage before its receipt is returned.</p></article>
-              <article><b>04</b><h3>Settle</h3><p>Every check must pass for <code>release</code>. Failed completeness, source, budget, or privacy checks produce <code>blocked</code>.</p></article>
+              <article><b>04</b><h3>Settle</h3><p>Every required typed check must pass for <code>release</code>. Objective violations produce <code>block</code>; party challenges produce <code>dispute</code>.</p></article>
             </div>
           </section>
 
@@ -120,7 +120,7 @@ export default function DocsPage() {
 
           <section className="docs-section" id="agents">
             <div className="docs-title"><span>03</span><div><p>0G agent interface</p><h2>Bring an existing agent to Themis</h2></div></div>
-            <p className="docs-lead">Agents discover Themis at <code>/.well-known/themis-agent.json</code>, request a server-timed challenge, sign a five-minute EIP-191 request, and submit the standard evidence schema to <code>POST /api/agent/evaluate</code>.</p>
+            <p className="docs-lead">Agents discover Themis at <code>/.well-known/themis-agent.json</code>, request a one-time challenge, sign a five-minute EIP-712 V2 request, and submit the versioned evidence schema. EIP-191 V1 remains temporarily compatible.</p>
             <div className="integration-list">
               <article><span>Discover</span><div><h3>Machine-readable manifest</h3><p>Network, identity scheme, faucet, artifact, health, evaluation, and documentation endpoints are published in one document.</p></div><b>Live</b></article>
               <article><span>Authenticate</span><div><h3>EVM wallet signature</h3><p>The signer commits to its address, server-issued timestamp and nonce, optional Agentic ID, and deterministic evidence hash.</p></div><b>Required</b></article>
@@ -128,7 +128,7 @@ export default function DocsPage() {
               <article><span>Settle</span><div><h3>Verifier authorization</h3><p>When the server verifier is configured, a contract-bound signature authorizes <code>settleWithReceipt</code> for release or refund.</p></div><b>Key-gated</b></article>
               <article><span>Act</span><div><h3>Native task calldata</h3><p><code>POST /api/agent/actions</code> builds chain-16602 calldata for create, accept, submit, settle, dispute, and resolve operations.</p></div><b>Live</b></article>
             </div>
-            <div className="endpoint"><span>POST</span><code>/api/agent/evaluate</code><b>EIP-191 signed envelope</b></div>
+            <div className="endpoint"><span>POST</span><code>/api/agent/evaluate</code><b>EIP-712 V2 signed envelope</b></div>
             <div className="code-grid agent-code"><div><p>Agent integration</p><pre><code>{agentExample}</code></pre></div><div><p>Discovery and artifacts</p><pre><code>{`GET /.well-known/themis-agent.json
 GET /api/agent/manifest
 GET /api/agent/challenge
@@ -151,7 +151,7 @@ ERC-7857: 0x2700F6A3e505402C9daB154C5c6ab9cAEC98EF1F`}</code></pre></div></div>
               <div><code>decision</code><span>enum</span><p><code>release</code> only when every check passes; otherwise <code>blocked</code>.</p></div>
               <div><code>checks[]</code><span>array</span><p>Human-readable evidence for each policy condition.</p></div>
               <div><code>storage</code><span>object</span><p>Encrypted 0G Storage root and upload transaction; required before production receipt issuance.</p></div>
-              <div><code>compute</code><span>object</span><p>0G Compute service-discovery attestation or a transparent degraded status.</p></div>
+              <div><code>compute</code><span>object</span><p>Provider, model, request/response commitments, TEE mode, response key, and verification status.</p></div>
               <div><code>network</code><span>object</span><p>Galileo chain identity and explorer context.</p></div>
             </div>
           </section>
@@ -160,7 +160,7 @@ ERC-7857: 0x2700F6A3e505402C9daB154C5c6ab9cAEC98EF1F`}</code></pre></div></div>
             <div className="docs-title"><span>05</span><div><p>0G integration</p><h2>Four load-bearing layers</h2></div></div>
             <div className="integration-list">
               <article><span>Chain</span><div><h3>0G Galileo</h3><p>Live block height, wallet onboarding to chain ID 16602, and the escrow settlement lifecycle.</p></div><b>Live read</b></article>
-              <article><span>Compute</span><div><h3>Official Compute SDK</h3><p><code>@0gfoundation/0g-compute-ts-sdk</code> creates a wallet-signed broker and records service-discovery readiness with each receipt.</p></div><b>Integrated</b></article>
+              <article><span>Compute</span><div><h3>Official Compute SDK</h3><p><code>@0gfoundation/0g-compute-ts-sdk</code> executes the risk-brief inference and verifies the provider response before live settlement.</p></div><b>Funded mode</b></article>
               <article><span>Storage</span><div><h3>Official Storage SDK</h3><p><code>@0gfoundation/0g-storage-ts-sdk</code> commits and uploads an AES-256-GCM evidence envelope before a receipt is issued.</p></div><b>Required</b></article>
               <article><span>Identity</span><div><h3>Agentic identity</h3><p>Signed requests can verify ERC-7857 ownership and approvals against the official Galileo Agentic ID registry.</p></div><b>Integrated</b></article>
             </div>
@@ -168,7 +168,7 @@ ERC-7857: 0x2700F6A3e505402C9daB154C5c6ab9cAEC98EF1F`}</code></pre></div></div>
 
           <section className="docs-section" id="escrow">
             <div className="docs-title"><span>06</span><div><p>Escrow contract</p><h2>Value moves after evidence</h2></div></div>
-            <p className="docs-lead"><code>contracts/ThemisEscrow.sol</code> is deployed on Galileo at <a href="https://chainscan-galileo.0g.ai/address/0x46032577415dfaeddc9758a9d72bc16c47cb1c47" target="_blank" rel="noreferrer"><code>0x4603…1c47 ↗</code></a>. It implements ERC-20 task escrow, verifier receipts, a 24-hour challenge window, and resolver-controlled disputes.</p>
+            <p className="docs-lead"><code>contracts/ThemisEscrow.sol</code> V2 uses SafeERC20, role separation, pausing, replay protection, and EIP-712 receipts. The verified Galileo V2 deployment is <a href="https://chainscan-galileo.0g.ai/address/0x0B1Cdef5CE5EE077BFEC7d8B50C3fE3073857640" target="_blank" rel="noreferrer"><code>0x0B1C…7640 ↗</code></a>; <code>0x4603…1c47</code> is retained as V1 legacy.</p>
             <div className="state-line">{["Open", "Accepted", "Submitted / Disputed", "Released / Refunded"].map((state, index) => <div key={state}><span>{index + 1}</span><strong>{state}</strong>{index < 3 && <i>→</i>}</div>)}</div>
             <ul className="docs-list"><li>The buyer deposits tokens with a <code>policyHash</code>.</li><li>A non-buyer worker submits a non-zero <code>evidenceHash</code>.</li><li>Either task party may dispute during the 24-hour challenge window.</li><li>The buyer can release, a valid receipt can be relayed, and only the resolver can decide a disputed task.</li><li>Refunds cannot bypass the active challenge window.</li></ul>
             <div className="docs-note warning"><strong>Testnet notice</strong><p>This is an unaudited Galileo deployment. Do not use it to custody valuable mainnet assets.</p></div>
@@ -181,14 +181,19 @@ ERC-7857: 0x2700F6A3e505402C9daB154C5c6ab9cAEC98EF1F`}</code></pre></div></div>
 OG_STORAGE_INDEXER_URL=https://indexer-storage-testnet-turbo.0g.ai
 OG_COMPUTE_PRIVATE_KEY=
 OG_STORAGE_PRIVATE_KEY=
+UPSTASH_REDIS_REST_URL=
+UPSTASH_REDIS_REST_TOKEN=
 THEMIS_VERIFIER_PRIVATE_KEY=
 THEMIS_EVIDENCE_ENCRYPTION_KEY=
 THEMIS_CHALLENGE_SECRET=
 THEMIS_REQUIRE_STORAGE=true
-THEMIS_ESCROW_ADDRESS=0x46032577415dfaeddc9758a9d72bc16c47cb1c47`}</code></pre></div>
+THEMIS_ESCROW_ADDRESS=0x0B1Cdef5CE5EE077BFEC7d8B50C3fE3073857640
+THEMIS_DEMO_USDC_ADDRESS=0x31938FdAF51bf56408471901A1c16491718E40f0`}</code></pre></div>
               <div><p>Verification commands</p><pre><code>{`pnpm dev
 pnpm test:run
+pnpm contract:test
 pnpm contract:compile
+pnpm lint
 pnpm build`}</code></pre></div>
             </div>
             <div className="docs-note warning"><strong>Signer safety</strong><p>Compute, Storage, and verifier keys are server-only encrypted variables and never enter browser code. The current Galileo operator is intentionally low-balance; production mainnet roles should be split across separate keys.</p></div>

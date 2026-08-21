@@ -1,12 +1,20 @@
 import { timingSafeEqual } from "node:crypto";
+import { Redis } from "@upstash/redis";
 
 const buckets = new Map<string, { count: number; resetAt: number }>();
 
-export function checkRateLimit(request: Request, scope: string, limit = 20, windowMs = 60_000) {
+export async function checkRateLimit(request: Request, scope: string, limit = 20, windowMs = 60_000) {
   const forwarded = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
   const client = forwarded || request.headers.get("x-real-ip") || "unknown";
   const key = `${scope}:${client}`;
   const now = Date.now();
+  if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
+    const redis = Redis.fromEnv();
+    const durableKey = `themis:rate:${key}:${Math.floor(now / windowMs)}`;
+    const count = await redis.incr(durableKey);
+    if (count === 1) await redis.pexpire(durableKey, windowMs);
+    return { allowed: count <= limit, remaining: Math.max(0, limit - count), retryAfter: Math.ceil(windowMs / 1000) };
+  }
   const current = buckets.get(key);
   if (!current || current.resetAt <= now) {
     buckets.set(key, { count: 1, resetAt: now + windowMs });

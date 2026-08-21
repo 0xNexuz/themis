@@ -22,13 +22,13 @@ export const metadata: Metadata = {
     apple: "/icon.svg",
   },
   openGraph: {
-    title: "Themis — Where intelligence becomes accountable",
+    title: "Themis — Prove the work before payment",
     description: "Proof-carrying commerce for autonomous agents, powered by 0G.",
     images: [{ url: "/themis-handoff.png", width: 1536, height: 864 }],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Themis — Where intelligence becomes accountable",
+    title: "Themis — Prove the work before payment",
     description: "Proof-carrying commerce for autonomous agents, powered by 0G.",
     images: ["/themis-handoff.png"],
   },

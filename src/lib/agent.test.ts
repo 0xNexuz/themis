@@ -1,6 +1,6 @@
 import { Wallet } from "ethers";
 import { describe, expect, it } from "vitest";
-import { buildAgentRequestMessage, issueAgentChallenge, verifyAgentIdentity } from "./agent";
+import { buildAgentRequestMessage, buildAgentRequestTypedData, issueAgentChallenge, verifyAgentIdentity } from "./agent";
 import { evaluateEvidence } from "./themis";
 
 const evidence = {
@@ -40,5 +40,15 @@ describe("Themis agent authentication", () => {
     const message = buildAgentRequestMessage(identity, evaluateEvidence(evidence).evidenceHash);
     await expect(verifyAgentIdentity({ ...identity, signature: await wallet.signMessage(message) }, evidence))
       .rejects.toThrow("STALE_AGENT_REQUEST");
+  });
+
+  it("accepts EIP-712 V2 and rejects nonce replay", async () => {
+    const wallet = new Wallet("0x0dbbe8e7318e00d4f6f13aa5c0671a0f112d8a4784173994fd146d50417fdd65");
+    const identity = { address: wallet.address, ...issueAgentChallenge(), scheme: "eip712" as const, method: "POST", path: "/api/agent/evaluate" };
+    const receipt = evaluateEvidence(evidence);
+    const typed = buildAgentRequestTypedData(identity, receipt.evidenceHash);
+    const signed = { ...identity, signature: await wallet.signTypedData(typed.domain, typed.types, typed.value) };
+    await expect(verifyAgentIdentity(signed, evidence)).resolves.toMatchObject({ signer: wallet.address });
+    await expect(verifyAgentIdentity(signed, evidence)).rejects.toThrow("REPLAYED_AGENT_REQUEST");
   });
 });
